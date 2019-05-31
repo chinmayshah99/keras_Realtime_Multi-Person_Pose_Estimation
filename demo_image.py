@@ -8,6 +8,8 @@ from config_reader import config_reader
 from scipy.ndimage.filters import gaussian_filter
 from model import get_testing_model
 
+import os
+
 
 # find connection in the specified sequence, center 29 is in the position 15
 limbSeq = [[2, 3], [2, 6], [3, 4], [4, 5], [6, 7], [7, 8], [2, 9], [9, 10], \
@@ -29,7 +31,7 @@ colors = [[255, 0, 0], [255, 85, 0], [255, 170, 0], [255, 255, 0], [170, 255, 0]
 
 def process (input_image, params, model_params):
 
-    oriImg = cv2.imread(input_image)  # B,G,R order
+    oriImg = cv2.imread('result/' + input_image)  # B,G,R order
     multiplier = [x * model_params['boxsize'] / oriImg.shape[0] for x in params['scale_search']]
 
     heatmap_avg = np.zeros((oriImg.shape[0], oriImg.shape[1], 19))
@@ -194,13 +196,13 @@ def process (input_image, params, model_params):
                     subset = np.vstack([subset, row])
 
     # delete some rows of subset which has few parts occur
-    deleteIdx = [];
+    deleteIdx = []
     for i in range(len(subset)):
         if subset[i][-1] < 4 or subset[i][-2] / subset[i][-1] < 0.4:
             deleteIdx.append(i)
     subset = np.delete(subset, deleteIdx, axis=0)
 
-    canvas = cv2.imread(input_image)  # B,G,R order
+    canvas = cv2.imread('result/' + input_image)   # B,G,R order
     for i in range(18):
         for j in range(len(all_peaks[i])):
             cv2.circle(canvas, all_peaks[i][j][0:2], 4, colors[i], thickness=-1)
@@ -228,37 +230,39 @@ def process (input_image, params, model_params):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--image', type=str, required=True, help='input image')
+    # parser.add_argument('--image', type=str, required=True, help='input image')
     parser.add_argument('--output', type=str, default='result.png', help='output image')
     parser.add_argument('--model', type=str, default='model/keras/model.h5', help='path to the weights file')
 
     args = parser.parse_args()
-    input_image = args.image
+    # input_image = args.image
     output = args.output
     keras_weights_file = args.model
 
-    tic = time.time()
     print('start processing...')
 
     # load model
 
     # authors of original model don't use
     # vgg normalization (subtracting mean) on input images
-    model = get_testing_model()
+    model = get_testing_model(38, 19)
     model.load_weights(keras_weights_file)
 
     # load config
     params, model_params = config_reader()
 
     # generate image with body parts
-    canvas = process(input_image, params, model_params)
+    
+    for root, dirs, files in os.walk("result"):  
+        for filename in files:
+            tic = time.time()
+            canvas = process(filename, params, model_params)
+            toc = time.time()
+            print ('processing time is %.5f' % (toc - tic))
 
-    toc = time.time()
-    print ('processing time is %.5f' % (toc - tic))
+            cv2.imwrite('nohup_result/' + filename, canvas)
 
-    cv2.imwrite(output, canvas)
-
-    cv2.destroyAllWindows()
+            # cv2.destroyAllWindows()
 
 
 
