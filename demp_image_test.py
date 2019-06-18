@@ -1,4 +1,3 @@
-# TODO 
 import argparse
 import cv2
 import math
@@ -8,7 +7,11 @@ import util
 from config_reader import config_reader
 from scipy.ndimage.filters import gaussian_filter
 from model import get_testing_model
+from collections import defaultdict
+
 import os
+import json
+
 
 # find connection in the specified sequence, center 29 is in the position 15
 limbSeq = [[2, 3], [2, 6], [3, 4], [4, 5], [6, 7], [7, 8], [2, 9], [9, 10], \
@@ -27,8 +30,6 @@ colors = [[255, 0, 0], [255, 85, 0], [255, 170, 0], [255, 255, 0], [170, 255, 0]
           [85, 0, 255], \
           [170, 0, 255], [255, 0, 255], [255, 0, 170], [255, 0, 85]]
 
-
-
 class ProcessImage():
     def __init__(self, *args, **kwargs):
         self.model = get_testing_model(38, 19)
@@ -40,8 +41,11 @@ class ProcessImage():
         self.params_scale_search = [(x) for x in self.params['scale_search']]
 
 
-    def process (self, input_image):
-        oriImg = input_image.copy()  # B,G,R order
+    def process (self, input_folder, input_image):
+        nested_dict = lambda: defaultdict(nested_dict)
+        data_out = nested_dict()
+        
+        oriImg = cv2.imread(input_folder + '/' + input_image)  # B,G,R order
         multiplier = [x * self.model_param_boxsize/ oriImg.shape[0] for x in self.params_scale_search]
 
         heatmap_avg = np.zeros((oriImg.shape[0], oriImg.shape[1], 19))
@@ -211,10 +215,12 @@ class ProcessImage():
                 deleteIdx.append(i)
         subset = np.delete(subset, deleteIdx, axis=0)
 
-        canvas = input_image.copy()  # B,G,R order
+        canvas = cv2.imread(input_folder + '/' + input_image)   # B,G,R order
+        
         for i in range(18):
             for j in range(len(all_peaks[i])):
                 cv2.circle(canvas, all_peaks[i][j][0:2], 4, colors[i], thickness=-1)
+                data_out[j][i] = all_peaks[i][j][0:2]
 
         stickwidth = 4
 
@@ -235,60 +241,41 @@ class ProcessImage():
                 cv2.fillConvexPoly(cur_canvas, polygon, colors[i])
                 canvas = cv2.addWeighted(canvas, 0.4, cur_canvas, 0.6, 0)
 
-        return canvas
-
-def camera_det(camera):
-    # Find OpenCV version
-    (major_ver, minor_ver, subminor_ver) = (cv2.__version__).split('.')
-    
-    if int(major_ver)  < 3 :
-        fps = int(camera.get(cv2.cv.CV_CAP_PROP_FPS))
-    else :
-        fps = int(camera.get(cv2.CAP_PROP_FPS))
-
-    no_frames = int(camera.get(7)) # CV_CAP_PROP_FRAME_COUNT
-    
-    width = int(camera.get(3))   # float
-    height = int(camera.get(4)) # float
-    print(fps, no_frames, height, width)
-
-    return fps, no_frames, height, width
+        return canvas, data_out
+def default(o):
+    if isinstance(o, np.int64): return int(o)  
+    raise TypeError
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--video', type=str, required=True, help='input video')
-    # parser.add_argument('--output', type=str, default='result.png', help='output image')
+    parser.add_argument('--input', type=str, required=True, help='input image folder')
+    parser.add_argument('--output', type=str, default='result', help='output image')
     parser.add_argument('--model', type=str, default='model/keras/model.h5', help='path to the weights file')
 
     args = parser.parse_args()
-    # input_image = args.image
-
+    
+    output_folder = args.output
+    input_folder = args.input
     keras_weights_file = args.model
+
     print('start processing...')
 
     model = ProcessImage()
+    
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
 
-    camera = cv2.VideoCapture(args.video)
-    if camera.isOpened():
-        fps, no_frames, height, width = camera_det(camera)
-        next_frame = 0
-
-        for i in range(no_frames):
+    for root, dirs, files in os.walk(input_folder):  
+        for filename in files:
             tic = time.time()
-            camera.set(1, next_frame) #CV_CAP_PROP_POS_FRAMES
-            next_frame += fps # get frame every 1s
-            
-            if no_frames <= next_frame:
-                break
-            
-            grab, frame = camera.read()
-            use_frame = frame.copy()
-            # img = cv2.resize(frame, (320,180)).copy()
-            # generate image with body parts
-            canvas = model.process(use_frame)
+            canvas, datapoints = model.process(input_folder, filename)
             toc = time.time()
-            print ('processing time is %.5f' % (toc - tic))            
-            cv2.imwrite('result/img' + str(next_frame) + '.png', canvas)
-        camera.release()
-    else:
-        assert FileExistsError
+            print ('processing time is %.5f' % (toc - tic))
+            cv2.imshow('final out', canvas)
+            cv2.waitKey(27)
+            cv2.imwrite(output_folder + '/imgggggg' + filename, canvas)
+            # cv2.destroyAllWindows()
+            y = json.dumps(datapoints, default= default)
+            f = open(output_folder + '/sample'+ filename +'.json', 'w')
+            print(y, file = f)
+            f.close()
