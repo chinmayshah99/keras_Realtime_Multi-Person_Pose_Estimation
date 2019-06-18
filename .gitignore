@@ -16,3 +16,6 @@ logs/
 training.csv
 weights.best.h5
 .Rproj.user
+
+# vscode
+settings.json

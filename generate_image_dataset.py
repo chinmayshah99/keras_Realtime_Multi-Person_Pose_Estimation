@@ -40,7 +40,6 @@ class ProcessImage():
         self.model_param_boxsize = self.model_params['boxsize'] 
         self.params_scale_search = [(x) for x in self.params['scale_search']]
 
-
     def process (self, input_folder, input_image):
         nested_dict = lambda: defaultdict(nested_dict)
         data_out = nested_dict()
@@ -242,6 +241,7 @@ class ProcessImage():
                 canvas = cv2.addWeighted(canvas, 0.4, cur_canvas, 0.6, 0)
 
         return canvas, data_out
+
 def default(o):
     if isinstance(o, np.int64): return int(o)  
     raise TypeError
